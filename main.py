@@ -41,6 +41,12 @@ sql_table(conn)
 
 emojis=['😎', '🍍','🌈', '🥝','🍅', '🍆','🥑', '🥦','🥬','🥒', '🌶', '🫑','🌽','🥕','🫒', '🌝','🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳', '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕', '🫓', '🥪', '🥙', '🧆']
 
+#Select all topics
+def select_topics(conn):
+    cursor = conn.cursor()
+    cursor.execute('''SELECT * FROM topics''')
+    conn.commit()
+
 #Add topic to topic table in db
 def add_topic(conn, topic, author):
     params = (topic, author)
@@ -59,3 +65,13 @@ def clear_topics(conn):
     cursor = conn.cursor()
     cursor.execute('''DELETE * FROM topics''')
     conn.commit()
+
+#Create announcement to start topic suggestion round
+async def suggestion_announcement(conn, topic_channel):
+  clear_topics(conn)
+  await topic_channel.send('@here Time to suggest some topics!!!')
+
+#Create poll
+async def create_poll(conn, topic_channel):
+  cursor = conn.cursor()
+  topics = select_topics().fetchall()
