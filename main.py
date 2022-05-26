@@ -40,3 +40,22 @@ conn = sql_connection()
 sql_table(conn)
 
 emojis=['😎', '🍍','🌈', '🥝','🍅', '🍆','🥑', '🥦','🥬','🥒', '🌶', '🫑','🌽','🥕','🫒', '🌝','🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳', '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕', '🫓', '🥪', '🥙', '🧆']
+
+#Add topic to topic table in db
+def add_topic(conn, topic, author):
+    params = (topic, author)
+    cursor = conn.cursor()
+    cursor.execute('''INSERT INTO topics (topic, author) VALUES (?, ?)''', params)
+    conn.commit()
+
+#Delete topic from topic table in db
+def delete_topic(conn,  topicID):
+    cursor = conn.cursor()
+    cursor.execute('''DELETE FROM topics WHERE topicID = ?''', topicID)
+    conn.commit()
+
+#Clear topics in topic table in db
+def clear_topics(conn):
+    cursor = conn.cursor()
+    cursor.execute('''DELETE * FROM topics''')
+    conn.commit()
