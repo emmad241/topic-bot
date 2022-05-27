@@ -44,31 +44,44 @@ emojis=['😎', '🍍','🌈', '🥝','🍅', '🍆','🥑', '🥦','🥬','🥒
 #Select all topics
 def select_topics():
     conn = sqlite3.connect('database.db')
+    sql = 'SELECT * FROM topics'
+
     cursor = conn.cursor()
-    cursor.execute('''SELECT FROM topics''')
+    cursor.execute(sql)
     conn.commit()
+  
+    return cursor
 
 #Add topic to topic table in db
 def add_topic(topic, author):
     conn = sqlite3.connect('database.db')
-    params = (topic, author)
+    params = (topic, author, 0)
+    sql = 'INSERT INTO topics (topic, author, votes) VALUES (?, ?, ?)'
+  
     cursor = conn.cursor()
-    cursor.execute('''INSERT INTO topics (topic, author) VALUES (?, ?)''', params)
+    cursor.execute(sql, params)
     conn.commit()
 
 #Delete topic from topic table in db
 def delete_topic(topicID):
     conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
     sql = 'DELETE FROM topics WHERE topicID = ?'
+
+    cursor = conn.cursor()
     cursor.execute(sql, topicID)
     conn.commit()
+
+async def list_topics(topic_channel):
+  topics = select_topics().fetchall()
+  res = '\n'.join(str(topic) for topic in topics)
+  await topic_channel.send(res)
 
 #Clear topics in topic table in db
 def clear_topics():
     conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
     sql = 'DELETE FROM topics'
+  
+    cursor = conn.cursor()
     cursor.execute(sql)
     conn.commit()
 
@@ -78,11 +91,10 @@ async def suggestion_announcement(topic_channel):
   await topic_channel.send('@here Time to suggest some topics!!!')
 
 #Create poll
-async def create_poll(conn, topic_channel):
-    cursor = conn.cursor()
+async def create_poll(topic_channel):
     topics = select_topics().fetchall()
 
-    res = [' - '.join(i) for i in topics]
+    res = ['\n'.join(str(topic) for topic in topics)]
 
     if len(topics) > 0:
         my_embed=discord.Embed(title='Topic of the day', description='Vote for your favourite topic', color=0xffffff)
@@ -108,8 +120,6 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    topic_channel = client.get_channel(936273788553793606)
-
     if message.author == client.user:
         return
 
@@ -129,11 +139,16 @@ async def on_message(message):
         author = str(message.author)
         add_topic(topic, author)
 
+    if msg.startswith('$list'):
+        topic_channel=client.get_channel(964331446934306826)
+        await list_topics(topic_channel)
+  
     if msg.startswith('$suggest'):
         topic_channel=client.get_channel(964331446934306826)
         await suggestion_announcement(topic_channel)
 
     if msg.startswith('$poll'):
+        topic_channel=client.get_channel(964331446934306826)
         await create_poll(topic_channel)
 
 
