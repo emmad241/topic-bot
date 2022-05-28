@@ -73,16 +73,23 @@ def delete_topic(topicID):
 
 async def list_topics(topic_channel):
   topics = select_topics().fetchall()
-  res = '\n'.join(str(topic) for topic in topics)
-  await topic_channel.send(res)
+  if len(topics) > 0:
+    res = '\n'.join(str(topic) for topic in topics)
+    await topic_channel.send(res)
+  else:
+    await topic_channel.send("There are no topics!!!")
 
 #Clear topics in topic table in db
 def clear_topics():
     conn = sqlite3.connect('database.db')
-    sql = 'DELETE FROM topics'
+    sql_delete = 'DELETE FROM topics'
+    sql_reset = 'DELETE FROM sqlite_sequence WHERE NAME=name'
   
     cursor = conn.cursor()
-    cursor.execute(sql)
+    cursor.execute(sql_delete)
+    conn.commit()
+
+    cursor.execute(sql_reset)
     conn.commit()
 
 #Create announcement to start topic suggestion round
@@ -94,7 +101,7 @@ async def suggestion_announcement(topic_channel):
 async def create_poll(topic_channel):
     topics = select_topics().fetchall()
 
-    res = ['\n'.join(str(topic) for topic in topics)]
+    res = ['\n'.join(f"{emojis[topics.index(topic)]} - {str(topic[2])} - {topic[1]}" for topic in topics)]
 
     if len(topics) > 0:
         my_embed=discord.Embed(title='Topic of the day', description='Vote for your favourite topic', color=0xffffff)
@@ -111,6 +118,15 @@ async def create_poll(topic_channel):
     else:
         await topic_channel.send('There are no topics!!!')
 
+#Display help message
+async def display_help(topic_channel):
+    command_list = ["$topic: add topic", "$list: list current topics", "$current: show current topic being discussed", "$help: list commands"]
+  
+    help_embed=discord.Embed(title='Help', description='Here are some helpful commands:', color=0xffffff)
+    
+    help_embed.add_field(name='Commands:', value = '\n'.join(command_list), inline=False)
+
+    await topic_channel.send(embed=help_embed)
 
 @client.event
 async def on_ready():
@@ -129,15 +145,6 @@ async def on_message(message):
         topic = msg.split('$topic ',1)[1]
         author = str(message.author)
         add_topic(topic, author)
-    
-    if msg.startswith('$topic'):
-        topic = msg.split('$topic',1)[1]
-
-        if topic[:2] == 's ':
-          topic = topic[2:]
-
-        author = str(message.author)
-        add_topic(topic, author)
 
     if msg.startswith('$list'):
         topic_channel=client.get_channel(964331446934306826)
@@ -150,6 +157,10 @@ async def on_message(message):
     if msg.startswith('$poll'):
         topic_channel=client.get_channel(964331446934306826)
         await create_poll(topic_channel)
+
+    if msg.startswith('$help'):
+        topic_channel=client.get_channel(964331446934306826)
+        await display_help(topic_channel);
 
 
 keep_alive()
