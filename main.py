@@ -25,7 +25,8 @@ def sql_connection():
     print(Error)
 
 #Create cursor and topic table 
-def sql_table(conn):
+def sql_table():
+  conn = sql_connection()
   cursor = conn.cursor()
 
   cursor.execute('''
@@ -43,7 +44,7 @@ emojis=['😎', '🍍','🌈', '🥝','🍅', '🍆','🥑', '🥦','🥬','🥒
 
 #Select all topics
 def select_topics():
-    conn = sqlite3.connect('database.db')
+    conn = sql_connection()
     sql = 'SELECT * FROM topics'
 
     cursor = conn.cursor()
@@ -54,7 +55,7 @@ def select_topics():
 
 #Add topic to topic table in db
 def add_topic(topic, author):
-    conn = sqlite3.connect('database.db')
+    conn = sql_connection()
     params = (topic, author, 0)
     sql = 'INSERT INTO topics (topic, author, votes) VALUES (?, ?, ?)'
   
@@ -64,7 +65,7 @@ def add_topic(topic, author):
 
 #Delete topic from topic table in db
 def delete_topic(topicID):
-    conn = sqlite3.connect('database.db')
+    conn = sql_connection()
     sql = 'DELETE FROM topics WHERE topicID = ?'
 
     cursor = conn.cursor()
@@ -74,14 +75,15 @@ def delete_topic(topicID):
 async def list_topics(topic_channel):
   topics = select_topics().fetchall()
   if len(topics) > 0:
-    res = '\n'.join(str(topic) for topic in topics)
-    await topic_channel.send(res)
+    res = ['\n'.join(f"{str(topic[2])} - {topic[1]} - {topic[3]}" for topic in topics)]
+    formatted = '\n'.join(res)
+    await topic_channel.send(formatted)
   else:
     await topic_channel.send("There are no topics!!!")
 
 #Clear topics in topic table in db
 def clear_topics():
-    conn = sqlite3.connect('database.db')
+    conn = sql_connection()
     sql_delete = 'DELETE FROM topics'
     sql_reset = 'DELETE FROM sqlite_sequence WHERE NAME=name'
   
@@ -91,6 +93,29 @@ def clear_topics():
 
     cursor.execute(sql_reset)
     conn.commit()
+
+#Update votes that a topic has obtained
+def update_votes(votes, topicID):
+  conn = sql_connection()
+  params = (votes, topicID)
+  sql = 'UPDATE topics SET votes = ? WHERE topicID = ?'
+
+  cursor = conn.cursor()
+  cursor.execute(sql, params)
+  conn.commit()
+
+#Determine winner
+def determine_winner():
+  conn = sql_connection()
+  sql = '''SELECT topic, author 
+           FROM topics 
+           ORDER BY votes DESC
+           LIMIT 1'''
+  cursor = conn.cursor()
+  cursor.execute(sql)
+  conn.commit()
+
+  return cursor
 
 #Create announcement to start topic suggestion round
 async def suggestion_announcement(topic_channel):
@@ -118,6 +143,26 @@ async def create_poll(topic_channel):
     else:
         await topic_channel.send('There are no topics!!!')
 
+#Declare winner
+async def declare_winner(topic_channel):
+  topics = select_topics().fetchall()
+  poll_message = await topic_channel.fetch_message(poll_msg.id)
+
+  for topic in topics:
+    topic_index = topics.index(topic)
+    topic_id = topics.index(topic) + 1
+    
+    reaction = get(poll_message.reactions,   emoji=emojis[topic_index])
+    num_reactions = reaction.count
+    
+    update_votes(num_reactions, topic_id)
+
+  winner = determine_winner().fetchone()
+  winning_topic = winner[0]
+  winning_author = winner[1]
+  
+  await topic_channel.send(f'The winner is:\n\t{winning_topic},\nWhich was asked by:\n\t{winning_author}\n@here Discuss!!!')
+
 #Display help message
 async def display_help(topic_channel):
     command_list = ["$topic: add topic", "$list: list current topics", "$current: show current topic being discussed", "$help: list commands"]
@@ -132,7 +177,7 @@ async def display_help(topic_channel):
 async def on_ready():
     print('We have logged in as {0.user}'.format(client))
     conn = sql_connection()
-    sql_table(conn)
+    sql_table()
 
 @client.event
 async def on_message(message):
@@ -157,6 +202,10 @@ async def on_message(message):
     if msg.startswith('$poll'):
         topic_channel=client.get_channel(964331446934306826)
         await create_poll(topic_channel)
+
+    if msg.startswith('$winner'):
+        topic_channel=client.get_channel(964331446934306826)
+        await declare_winner(topic_channel)
 
     if msg.startswith('$help'):
         topic_channel=client.get_channel(964331446934306826)
