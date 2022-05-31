@@ -13,8 +13,6 @@ my_secret = os.environ['TOKEN']
 
 client = discord.Client()
 
-topic_channel=client.get_channel(964331446934306826)
-
 #Connect to database
 def sql_connection():
   try:
@@ -24,58 +22,56 @@ def sql_connection():
   except Error:
     print(Error)
 
+#Execute SQL
+def execute_sql(sql, params):   
+    conn = sql_connection()
+    cursor = conn.cursor()
+  
+    if(params == None):
+        cursor.execute(sql)
+    else:
+        cursor.execute(sql, params)
+      
+    conn.commit()
+    return cursor
+
 #Create cursor and topic table 
 def sql_table():
-  conn = sql_connection()
-  cursor = conn.cursor()
-
-  cursor.execute('''
-            CREATE TABLE IF NOT EXISTS topics(
-            topicID INTEGER PRIMARY KEY AUTOINCREMENT, 
-            author TEXT NOT NULL, 
-            topic TEXT NOT NULL,
-            votes INTEGER
-           );
-            ''')
-  print("Table created")
-  conn.commit()
+    sql = '''
+              CREATE TABLE IF NOT EXISTS topics(
+              topic_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+              author TEXT NOT NULL, 
+              topic TEXT NOT NULL,
+              votes INTEGER
+            );
+              '''
+    execute_sql(sql, None)
+    print("Table created")
 
 emojis=['😎', '🍍','🌈', '🥝','🍅', '🍆','🥑', '🥦','🥬','🥒', '🌶', '🫑','🌽','🥕','🫒', '🌝','🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳', '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕', '🫓', '🥪', '🥙', '🧆']
 
 #Select all topics
 def select_topics():
-    conn = sql_connection()
     sql = 'SELECT * FROM topics'
-
-    cursor = conn.cursor()
-    cursor.execute(sql)
-    conn.commit()
-  
+    cursor = execute_sql(sql, None)
     return cursor
 
 #Add topic to topic table in db
 def add_topic(topic, author):
-    conn = sql_connection()
-    params = (topic, author, 0)
-    sql = 'INSERT INTO topics (topic, author, votes) VALUES (?, ?, ?)'
+    params = (topic, author, 0, 0)
+    sql = 'INSERT INTO topics (topic, author, votes, is_discussed) VALUES (?, ?, ?, ?)'
+    execute_sql(sql,params)
   
-    cursor = conn.cursor()
-    cursor.execute(sql, params)
-    conn.commit()
-
 #Delete topic from topic table in db
 def delete_topic(topicID):
-    conn = sql_connection()
-    sql = 'DELETE FROM topics WHERE topicID = ?'
+    sql = 'DELETE FROM topics WHERE topic_id = ?'
+    execute_sql(sql, None)
 
-    cursor = conn.cursor()
-    cursor.execute(sql, topicID)
-    conn.commit()
-
+#List topics and send in channel
 async def list_topics(topic_channel):
   topics = select_topics().fetchall()
   if len(topics) > 0:
-    res = ['\n'.join(f"{str(topic[2])} - {topic[1]} - {topic[3]}" for topic in topics)]
+    res = ['\n'.join(f"{str(topic[0])} | {topic[2]} - {topic[1]}" for topic in topics)]
     formatted = '\n'.join(res)
     await topic_channel.send(formatted)
   else:
@@ -83,39 +79,28 @@ async def list_topics(topic_channel):
 
 #Clear topics in topic table in db
 def clear_topics():
-    conn = sql_connection()
     sql_delete = 'DELETE FROM topics'
     sql_reset = 'DELETE FROM sqlite_sequence WHERE NAME=name'
-  
-    cursor = conn.cursor()
-    cursor.execute(sql_delete)
-    conn.commit()
+    execute_sql(sql_delete, None)
+    execute_sql(sql_reset, None)
 
-    cursor.execute(sql_reset)
-    conn.commit()
-
-#Update votes that a topic has obtained
+#Update number of votes a topic has
 def update_votes(votes, topicID):
-  conn = sql_connection()
   params = (votes, topicID)
-  sql = 'UPDATE topics SET votes = ? WHERE topicID = ?'
-
-  cursor = conn.cursor()
-  cursor.execute(sql, params)
-  conn.commit()
+  sql = 'UPDATE topics SET votes = ? WHERE topic_id = ?'
+  execute_sql(sql, params)
 
 #Determine winner
 def determine_winner():
-  conn = sql_connection()
   sql = '''SELECT topic, author 
            FROM topics 
            ORDER BY votes DESC
            LIMIT 1'''
-  cursor = conn.cursor()
-  cursor.execute(sql)
-  conn.commit()
+  cursor = execute_sql(sql, None)
 
-  return cursor
+  winner = cursor.fetchone()
+
+  return winner
 
 #Create announcement to start topic suggestion round
 async def suggestion_announcement(topic_channel):
@@ -157,11 +142,12 @@ async def declare_winner(topic_channel):
     
     update_votes(num_reactions, topic_id)
 
-  winner = determine_winner().fetchone()
+  winner = determine_winner()
   winning_topic = winner[0]
   winning_author = winner[1]
   
-  await topic_channel.send(f'The winner is:\n\t{winning_topic},\nWhich was asked by:\n\t{winning_author}\n@here Discuss!!!')
+  await topic_channel.send(f'The winner is:\n\t"{winning_topic}"\nWhich was asked by:\n\t{winning_author}\n@here Discuss!!!')
+
 
 #Display help message
 async def display_help(topic_channel):
@@ -176,7 +162,6 @@ async def display_help(topic_channel):
 @client.event
 async def on_ready():
     print('We have logged in as {0.user}'.format(client))
-    conn = sql_connection()
     sql_table()
 
 @client.event
