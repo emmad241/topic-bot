@@ -13,7 +13,8 @@ my_secret = os.environ['TOKEN']
 
 client = discord.Client()
 
-#Connect to database
+discussion_index = 0
+
 def sql_connection():
   try:
     conn = sqlite3.connect('database.db')
@@ -21,8 +22,24 @@ def sql_connection():
     return conn
   except Error:
     print(Error)
+ 
+def sql_table():
+  conn = sql_connection()
+  cursor = conn.cursor()
 
-#Execute SQL
+  cursor.execute('''
+            CREATE TABLE IF NOT EXISTS topics(
+            topic_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            author TEXT NOT NULL, 
+            topic TEXT NOT NULL,
+            votes INTEGER,
+            is_discussed INTEGER
+           );
+            ''')
+  print("Table created")
+  
+  conn.commit()
+
 def execute_sql(sql, params):   
     conn = sql_connection()
     cursor = conn.cursor()
@@ -35,39 +52,32 @@ def execute_sql(sql, params):
     conn.commit()
     return cursor
 
-#Create cursor and topic table 
-def sql_table():
-    sql = '''
-              CREATE TABLE IF NOT EXISTS topics(
-              topic_id INTEGER PRIMARY KEY AUTOINCREMENT, 
-              author TEXT NOT NULL, 
-              topic TEXT NOT NULL,
-              votes INTEGER
-            );
-              '''
-    execute_sql(sql, None)
-    print("Table created")
-
 emojis=['😎', '🍍','🌈', '🥝','🍅', '🍆','🥑', '🥦','🥬','🥒', '🌶', '🫑','🌽','🥕','🫒', '🌝','🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳', '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕', '🫓', '🥪', '🥙', '🧆']
 
-#Select all topics
 def select_topics():
     sql = 'SELECT * FROM topics'
     cursor = execute_sql(sql, None)
     return cursor
 
-#Add topic to topic table in db
+def get_descending():
+  sql = '''SELECT topic, author 
+           FROM topics 
+           ORDER BY votes DESC
+           '''
+  cursor = execute_sql(sql, None)
+  topics_descending = cursor.fetchall()
+
+  return topics_descending
+
 def add_topic(topic, author):
     params = (topic, author, 0, 0)
     sql = 'INSERT INTO topics (topic, author, votes, is_discussed) VALUES (?, ?, ?, ?)'
     execute_sql(sql,params)
   
-#Delete topic from topic table in db
 def delete_topic(topicID):
     sql = 'DELETE FROM topics WHERE topic_id = ?'
     execute_sql(sql, None)
 
-#List topics and send in channel
 async def list_topics(topic_channel):
   topics = select_topics().fetchall()
   if len(topics) > 0:
@@ -77,37 +87,21 @@ async def list_topics(topic_channel):
   else:
     await topic_channel.send("There are no topics!!!")
 
-#Clear topics in topic table in db
 def clear_topics():
     sql_delete = 'DELETE FROM topics'
     sql_reset = 'DELETE FROM sqlite_sequence WHERE NAME=name'
     execute_sql(sql_delete, None)
     execute_sql(sql_reset, None)
 
-#Update number of votes a topic has
 def update_votes(votes, topicID):
   params = (votes, topicID)
   sql = 'UPDATE topics SET votes = ? WHERE topic_id = ?'
   execute_sql(sql, params)
 
-#Determine winner
-def determine_winner():
-  sql = '''SELECT topic, author 
-           FROM topics 
-           ORDER BY votes DESC
-           LIMIT 1'''
-  cursor = execute_sql(sql, None)
-
-  winner = cursor.fetchone()
-
-  return winner
-
-#Create announcement to start topic suggestion round
 async def suggestion_announcement(topic_channel):
   clear_topics()
   await topic_channel.send('@here Time to suggest some topics!!!')
 
-#Create poll
 async def create_poll(topic_channel):
     topics = select_topics().fetchall()
 
@@ -128,7 +122,6 @@ async def create_poll(topic_channel):
     else:
         await topic_channel.send('There are no topics!!!')
 
-#Declare winner
 async def declare_winner(topic_channel):
   topics = select_topics().fetchall()
   poll_message = await topic_channel.fetch_message(poll_msg.id)
@@ -142,14 +135,44 @@ async def declare_winner(topic_channel):
     
     update_votes(num_reactions, topic_id)
 
-  winner = determine_winner()
+  topics_descending = get_descending()
+  winner = topics_descending[0]
   winning_topic = winner[0]
   winning_author = winner[1]
+
+  global discussion_index
+  discussion_index += 1
   
   await topic_channel.send(f'The winner is:\n\t"{winning_topic}"\nWhich was asked by:\n\t{winning_author}\n@here Discuss!!!')
 
+async def current_topic(topic_channel):
+  global discussion_index
+  
+  try:
+    current = get_descending()[discussion_index -1]
+    current_topic = current[0]
+    current_author = current[1]
+    
+    await topic_channel.send(f'The current topic is:\n\t"{current_topic}" - {current_author}')
+    
+    discussion_index += 1
+  except:
+    await topic_channel.send('There are no more topics!')
 
-#Display help message
+async def next_topic(topic_channel):
+  global discussion_index
+  
+  try:
+    next = get_descending()[discussion_index]
+    next_topic = next[0]
+    next_author = next[1]
+    
+    await topic_channel.send(f'The next topic is:\n\t"{next_topic}"\nWhich was asked by:\n\t{next_author}\n@here Discuss!!!')
+    
+    discussion_index += 1
+  except:
+    await topic_channel.send('There are no more topics!')
+
 async def display_help(topic_channel):
     command_list = ["$topic: add topic", "$list: list current topics", "$current: show current topic being discussed", "$help: list commands"]
   
@@ -191,6 +214,14 @@ async def on_message(message):
     if msg.startswith('$winner'):
         topic_channel=client.get_channel(964331446934306826)
         await declare_winner(topic_channel)
+
+    if msg.startswith('$next'):
+        topic_channel=client.get_channel(964331446934306826)
+        await next_topic(topic_channel)
+
+    if msg.startswith('$current'):
+        topic_channel=client.get_channel(964331446934306826)
+        await current_topic(topic_channel)
 
     if msg.startswith('$help'):
         topic_channel=client.get_channel(964331446934306826)
