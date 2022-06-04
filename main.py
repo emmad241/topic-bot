@@ -40,14 +40,17 @@ def sql_table():
   
   conn.commit()
 
-def execute_sql(sql, params):   
+def execute_sql(sql, *params): 
     conn = sql_connection()
     cursor = conn.cursor()
-  
-    if(params == None):
-        cursor.execute(sql)
-    else:
-        cursor.execute(sql, params)
+    
+    try:
+      if None in params:
+          cursor.execute(sql)
+      else:
+          cursor.execute(sql, params)
+    except Exception as e:
+	    print("ERROR : "+str(e))
       
     conn.commit()
     return cursor
@@ -59,6 +62,12 @@ def select_topics():
     cursor = execute_sql(sql, None)
     return cursor
 
+def select_topic(topic_id):
+    sql = 'SELECT * FROM topics WHERE topic_id = ?'
+    cursor = execute_sql(sql, topic_id)
+    topic = cursor.fetchall()
+    return topic
+
 def get_descending():
   sql = '''SELECT topic, author 
            FROM topics 
@@ -69,14 +78,25 @@ def get_descending():
 
   return topics_descending
 
-def add_topic(topic, author):
+async def add_topic(topic, author, topic_channel):
+  try:
     params = (topic, author, 0, 0)
     sql = 'INSERT INTO topics (topic, author, votes, is_discussed) VALUES (?, ?, ?, ?)'
     execute_sql(sql,params)
+  except:
+    await topic_channel.send('Topic limit reached!!!')
   
-def delete_topic(topicID):
-    sql = 'DELETE FROM topics WHERE topic_id = ?'
-    execute_sql(sql, None)
+async def delete_topic(topic_id, author, topic_channel):
+    try:
+      topic_id = int(topic_id)
+      topic = select_topic(topic_id)[0]
+      if(topic[1] == str(author)):
+        sql = 'DELETE FROM topics WHERE topic_id = ?'
+        execute_sql(sql, topic_id)
+      else:
+        await topic_channel.send('You are not the author of this topic')
+    except:
+      await topic_channel.send('Please enter a valid index')
 
 async def list_topics(topic_channel):
   topics = select_topics().fetchall()
@@ -139,9 +159,6 @@ async def declare_winner(topic_channel):
   winner = topics_descending[0]
   winning_topic = winner[0]
   winning_author = winner[1]
-
-  global discussion_index
-  discussion_index += 1
   
   await topic_channel.send(f'The winner is:\n\t"{winning_topic}"\nWhich was asked by:\n\t{winning_author}\n@here Discuss!!!')
 
@@ -149,7 +166,7 @@ async def current_topic(topic_channel):
   global discussion_index
   
   try:
-    current = get_descending()[discussion_index -1]
+    current = get_descending()[discussion_index]
     current_topic = current[0]
     current_author = current[1]
     
@@ -161,6 +178,7 @@ async def current_topic(topic_channel):
 
 async def next_topic(topic_channel):
   global discussion_index
+  discussion_index += 1
   
   try:
     next = get_descending()[discussion_index]
@@ -169,7 +187,6 @@ async def next_topic(topic_channel):
     
     await topic_channel.send(f'The next topic is:\n\t"{next_topic}"\nWhich was asked by:\n\t{next_author}\n@here Discuss!!!')
     
-    discussion_index += 1
   except:
     await topic_channel.send('There are no more topics!')
 
@@ -195,36 +212,43 @@ async def on_message(message):
     msg = message.content
 
     if msg.startswith('$topic '):
+        topic_channel=client.get_channel(931633862302380084)
         topic = msg.split('$topic ',1)[1]
         author = str(message.author)
-        add_topic(topic, author)
+        await add_topic(topic, author, topic_channel)
 
     if msg.startswith('$list'):
-        topic_channel=client.get_channel(964331446934306826)
+        topic_channel=client.get_channel(931633862302380084)
         await list_topics(topic_channel)
   
     if msg.startswith('$suggest'):
-        topic_channel=client.get_channel(964331446934306826)
+        topic_channel=client.get_channel(931633862302380084)
         await suggestion_announcement(topic_channel)
 
     if msg.startswith('$poll'):
-        topic_channel=client.get_channel(964331446934306826)
+        topic_channel=client.get_channel(931633862302380084)
         await create_poll(topic_channel)
 
     if msg.startswith('$winner'):
-        topic_channel=client.get_channel(964331446934306826)
+        topic_channel=client.get_channel(931633862302380084)
         await declare_winner(topic_channel)
 
     if msg.startswith('$next'):
-        topic_channel=client.get_channel(964331446934306826)
+        topic_channel=client.get_channel(931633862302380084)
         await next_topic(topic_channel)
 
     if msg.startswith('$current'):
-        topic_channel=client.get_channel(964331446934306826)
+        topic_channel=client.get_channel(931633862302380084)
         await current_topic(topic_channel)
 
+    if msg.startswith('$delete'):
+        author = message.author
+        topic_id = msg.split('$delete ',1)[1]
+        topic_channel=client.get_channel(931633862302380084)
+        await delete_topic(topic_id, author, topic_channel)
+
     if msg.startswith('$help'):
-        topic_channel=client.get_channel(964331446934306826)
+        topic_channel=client.get_channel(931633862302380084)
         await display_help(topic_channel);
 
 
